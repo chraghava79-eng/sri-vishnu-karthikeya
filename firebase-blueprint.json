@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user progress, streaks, and subscription status.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "fears": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "score": { "type": "number" },
+              "lastUpdated": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "streak": { "type": "integer" },
+        "lastTaskDate": { "type": "string", "format": "date" },
+        "subscriptionStatus": { "type": "string", "enum": ["free", "premium"] },
+        "rank": { "type": "string", "enum": ["Beginner", "Novice", "Intermediate", "Advanced", "Fearless"] },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "isBanned": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "fears", "streak", "subscriptionStatus"]
+    },
+    "Coupon": {
+      "title": "Coupon Code",
+      "description": "Promotional codes for subscriptions.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "duration": { "type": "string", "enum": ["1month", "3months", "yearly"] },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "usageLimit": { "type": "integer" },
+        "usageCount": { "type": "integer" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["code", "discountType", "discountValue", "active"]
+    },
+    "AppConfig": {
+      "title": "App Configuration",
+      "description": "Global feature flags and limits.",
+      "type": "object",
+      "properties": {
+        "freeFearLimit": { "type": "integer" },
+        "dailyTaskLimit": { "type": "integer" },
+        "aiEnabled": { "type": "boolean" }
+      }
+    },
+    "Task": {
+      "title": "Exposure Task",
+      "description": "A specific task designed for exposure therapy.",
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" },
+        "fearType": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "description": { "type": "string" },
+        "points": { "type": "integer" }
+      },
+      "required": ["taskId", "fearType", "difficulty", "description"]
+    },
+    "Log": {
+      "title": "Task Log",
+      "description": "Records user progress after completing a task.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "fearType": { "type": "string" },
+        "beforeFear": { "type": "integer" },
+        "afterFear": { "type": "integer" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "taskId", "fearType", "beforeFear", "afterFear", "timestamp"]
+    },
+    "Feedback": {
+      "title": "User Feedback",
+      "description": "Feedback or bug reports submitted by users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string", "format": "email" },
+        "type": { "type": "string", "enum": ["feedback", "bug"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "message", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and progress data."
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Global library of exposure tasks."
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "Log",
+      "description": "User-specific task completion logs."
+    },
+    "/coupons/{code}": {
+      "schema": "Coupon",
+      "description": "Subscription coupon codes."
+    },
+    "/config/global": {
+      "schema": "AppConfig",
+      "description": "Global app settings."
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "User feedback and bug reports."
+    }
+  }
+}

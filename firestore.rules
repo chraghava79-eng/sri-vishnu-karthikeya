@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (from Firebase Auth)
+    // Fields:
+    //   - userId: string (required)
+    //   - displayName: string (optional)
+    //   - email: string (required, email format)
+    //   - fears: array of objects (required)
+    //   - streak: integer (required)
+    //   - lastTaskDate: string (optional, date format)
+    //   - subscriptionStatus: string (required, enum: free, premium)
+    //   - rank: string (optional, enum)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: tasks
+    // Document ID: taskId
+    // Fields:
+    //   - taskId: string (required)
+    //   - fearType: string (required)
+    //   - difficulty: string (required, enum: easy, medium, hard)
+    //   - description: string (required)
+    //   - points: integer (optional)
+    //
+    // Collection: users/{userId}/logs
+    // Document ID: logId
+    // Fields:
+    //   - userId: string (required)
+    //   - taskId: string (required)
+    //   - fearType: string (required)
+    //   - beforeFear: integer (required, 0-10)
+    //   - afterFear: integer (required, 0-10)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: feedback
+    // Document ID: feedbackId
+    // Fields:
+    //   - userId: string (required)
+    //   - userEmail: string (optional)
+    //   - type: string (required, enum: feedback, bug)
+    //   - message: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: analytics
+    // Document ID: eventId
+    // Fields:
+    //   - event: string (required)
+    //   - userId: string (required)
+    //   - timestamp: timestamp (required)
+    //   - userAgent: string (required)
+    //   - platform: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((request.auth.token.email == "chraghava79@gmail.com" && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'fears', 'streak', 'subscriptionStatus']) &&
+             data.userId == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.displayName is string && data.displayName.size() < 100 &&
+             data.fears is list && data.fears.size() <= 20 &&
+             data.streak is int && data.streak >= 0 &&
+             data.subscriptionStatus in ['free', 'premium'] &&
+             (!('role' in data) || data.role in ['user', 'admin']) &&
+             (!('isBanned' in data) || data.isBanned is bool) &&
+             (!('lastTaskDate' in data) || data.lastTaskDate is string && data.lastTaskDate.size() < 20) &&
+             (!('lastCreditReset' in data) || data.lastCreditReset is string && data.lastCreditReset.size() < 20) &&
+             (!('aiCredits' in data) || data.aiCredits is int && data.aiCredits >= 0);
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['userId', 'taskId', 'fearType', 'beforeFear', 'afterFear', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.fearType is string && data.fearType.size() < 50 &&
+             data.taskId is string && data.taskId.size() < 50 &&
+             data.beforeFear is int && data.beforeFear >= 0 && data.beforeFear <= 10 &&
+             data.afterFear is int && data.afterFear >= 0 && data.afterFear <= 10 &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidCoupon(data) {
+      return data.keys().hasAll(['code', 'discountType', 'discountValue', 'active']) &&
+             data.code is string && data.code.size() < 50 &&
+             data.discountType in ['percentage', 'fixed'] &&
+             data.discountValue is number && data.discountValue >= 0 &&
+             data.active is bool &&
+             (!('usageLimit' in data) || data.usageLimit is int) &&
+             (!('usageCount' in data) || data.usageCount is int);
+    }
+
+    function isValidFeedback(data) {
+      return data.keys().hasAll(['userId', 'type', 'message', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.type in ['feedback', 'bug'] &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 5000;
+    }
+
+    function isValidAnalytics(data) {
+      return data.keys().hasAll(['event', 'userId', 'timestamp', 'userAgent', 'platform']) &&
+             data.event is string && data.event.size() < 100 &&
+             data.userId is string && data.userId.size() < 100 &&
+             data.timestamp is timestamp &&
+             data.userAgent is string && data.userAgent.size() < 500 &&
+             data.platform is string && data.platform.size() < 100 &&
+             (!('properties' in data) || data.properties is map);
+    }
+
+    function isValidAlternativeLog(data) {
+      return data.keys().hasAll(['activityId', 'type', 'timestamp']) &&
+             data.type in ['Mind Reframe', 'Micro-Challenges', 'Reflection'] &&
+             (!('userId' in data) || data.userId == request.auth.uid) &&
+             (!('input' in data) || data.input is string && data.input.size() < 5000) &&
+             (!('reframe' in data) || data.reframe is string && data.reframe.size() < 5000) &&
+             (!('challenge' in data) || data.challenge is string && data.challenge.size() < 500) &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
+      
+      match /logs/{logId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidLog(request.resource.data);
+      }
+
+      match /alternative_logs/{logId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidAlternativeLog(request.resource.data);
+      }
+    }
+
+    match /alternative_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidAlternativeLog(request.resource.data) && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /coupons/{code} {
+      allow get: if isAuthenticated();
+      allow list: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usageCount']) &&
+        request.resource.data.usageCount == (resource.data.get('usageCount', 0) + 1)
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /config/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidFeedback(request.resource.data);
+    }
+
+    match /analytics/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isValidAnalytics(request.resource.data);
+    }
+  }
+}
