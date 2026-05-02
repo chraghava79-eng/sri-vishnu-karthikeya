@@ -148,9 +148,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-3"
         >
-          <img src={APP_LOGO} className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-xl shadow-lg" alt="FEAR" referrerPolicy="no-referrer" />
-          <div className="h-4 w-px bg-gray-200 mx-1" />
-          <span className="text-[10px] sm:text-sm font-black tracking-[0.2em] italic text-gray-400">NEURAL INTERFACE</span>
+          <img src={APP_LOGO} className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-xl shadow-lg" alt="Phobix" referrerPolicy="no-referrer" />
+          <div className="h-4 w-px bg-[var(--border)] mx-1" />
+          <span className="text-[10px] sm:text-sm font-black tracking-[0.2em] italic text-[var(--text-secondary)]">NEURAL INTERFACE</span>
         </motion.div>
       </header>
 
@@ -188,7 +188,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                       <div className="absolute inset-0 bg-blue-500/5 blur-2xl rounded-full" />
                       <div className="relative z-10">
                         {/* Adjust icon size for mobile */}
-                        {React.cloneElement(currentStep.icon as React.ReactElement, { size: 32, className: "sm:w-12 sm:h-12 text-blue-500" })}
+                        {currentStep.icon && React.cloneElement(currentStep.icon as React.ReactElement<any>, { size: 32, className: "sm:w-12 sm:h-12 text-blue-500" })}
                       </div>
                     </motion.div>
                   </div>
@@ -385,7 +385,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <button
             onClick={handleNext}
             disabled={currentStep.isSelection && selectedFears.length === 0}
-            className="w-full py-4 sm:py-5 bg-black text-white rounded-2xl sm:rounded-[2.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all shadow-[0_20px_50px_rgba(0,0,0,0.1)] hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            className="w-full py-4 sm:py-5 bg-blue-600 text-white rounded-2xl sm:rounded-[2.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all shadow-[0_20px_50px_rgba(59,130,246,0.2)] hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             <span className="text-xs sm:text-sm">{currentStep.cta}</span>
             <ArrowRight size={18} className="sm:w-5 sm:h-5" />

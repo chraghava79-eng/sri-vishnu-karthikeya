@@ -1,12 +1,16 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, onSnapshot, Timestamp, getDocFromServer } from 'firebase/firestore';
+import { getPerformance } from 'firebase/performance';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
+
+// Initialize Performance Monitoring
+export const perf = typeof window !== 'undefined' ? getPerformance(app) : null;
 
 export const testConnection = async () => {
   try {
@@ -29,6 +33,16 @@ export const signInWithGoogle = async () => {
 };
 
 export const logOut = () => signOut(auth);
+
+export const signUpWithEmail = async (email: string, pass: string, name: string) => {
+  const result = await createUserWithEmailAndPassword(auth, email, pass);
+  await updateProfile(result.user, { displayName: name });
+  return result.user;
+};
+
+export const signInWithEmail = (email: string, pass: string) => signInWithEmailAndPassword(auth, email, pass);
+
+export const resetPassword = (email: string) => sendPasswordResetEmail(auth, email);
 
 export enum OperationType {
   CREATE = 'create',

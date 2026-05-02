@@ -164,9 +164,14 @@ export const ALTERNATIVE_ACTIVITIES: any[] = [
 ];
 
 export const MICRO_CHALLENGES = [
-  "Hold eye contact with yourself in a mirror for 30 seconds.",
-  "Take 5 deep, audible breaths in a quiet space.",
-  "Write down one thing you're proud of today.",
-  "Stand perfectly still for 60 seconds.",
-  "Smile at yourself for 15 seconds."
+  "Hold eye contact with yourself in a mirror for 30 seconds without looking away.",
+  "Take 5 deep, audible breaths in a quiet space, focusing only on the sound.",
+  "Write down three specific things you're proud of today, no matter how small.",
+  "Stand perfectly still for 60 seconds, observing every sensation in your body.",
+  "Smile at yourself in the mirror for 30 seconds, even if it feels forced.",
+  "Text someone you trust and tell them one thing you appreciate about them.",
+  "Sit in total silence for 60 seconds without checking any devices.",
+  "Identify 5 things you can see, 4 you can touch, 3 you can hear, 2 you can smell, and 1 you can taste.",
+  "Say 'I am capable of handling this' out loud 5 times with conviction.",
+  "Clench your fists as tight as you can for 10 seconds, then release and feel the tension leave."
 ];

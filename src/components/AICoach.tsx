@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Send, Sparkles, User, Brain, Zap, Shield } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import GlassCard from './GlassCard';
 import { UserProfile } from '../types';
 import { APP_LOGO } from '../constants';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, updateDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, increment, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 
 interface AICoachProps {
   onClose: () => void;
@@ -18,7 +18,7 @@ import { trackEvent, AnalyticsEvent } from '../services/analytics';
 
 export default function AICoach({ onClose, profile, onOpenPaywall }: AICoachProps) {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([
-    { role: 'ai', text: `Neural Interface established. Hello ${profile.displayName}. I am your FEAR Protocol Coach. I have analyzed your current rank as ${profile.rank}. How can I assist with your neural recalibration today?` }
+    { role: 'ai', text: `Neural Interface established. Hello ${profile.displayName}. I am your Phobix Protocol Coach. I have analyzed your current rank as ${profile.rank}. How can I assist with your neural recalibration today?` }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,22 +49,61 @@ export default function AICoach({ onClose, profile, onOpenPaywall }: AICoachProp
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+      
+      // Get recent logs for context
+      const logsQuery = query(
+        collection(db, 'users', profile.userId, 'logs'),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      );
+      const logsSnap = await getDocs(logsQuery);
+      const recentHistory = logsSnap.docs.map(d => {
+        const data = d.data();
+        return `${data.fearType} (Reduction: ${data.beforeFear - data.afterFear})`;
+      }).join(', ');
+
+      const responseStream = await ai.models.generateContentStream({
+        model: "gemini-3.1-pro-preview",
         contents: userMsg,
         config: {
-          systemInstruction: `You are the FEAR Neural Interface Coach. 
-          User Context: Rank is ${profile.rank}, Streak is ${profile.streak} days.
-          Your goal is to assist in neural resilience training using clinical exposure therapy principles. 
-          Use clinical, data-driven terminology (e.g., 'neural pathways', 'recalibration', 'topography', 'baseline'). 
-          Be empathetic but professional. 
-          Provide specific, actionable exposure protocols when asked. 
-          Keep responses concise (under 100 words) and focused on mental mastery.`,
+          systemInstruction: `You are the PHOBIX Neural Interface Coach. You are edgy, direct, and clinical. You don't sugarcoat the reality of neural recalibration.
+
+USER NEURAL PROFILE:
+- Rank: ${profile.rank}
+- Neural XP: ${profile.xp || 0}
+- Streak: ${profile.streak} days
+- Recent History: ${recentHistory || 'No recent tasks logged.'}
+- Fear Baseline: ${JSON.stringify(profile.fearProfile || {})}
+
+YOUR PROTOCOL:
+1. EDGY PERSONALITY: Be direct, slightly provocative, and intensely focused on results. Use phrases like "Neural weakness detected," "Synaptic failure is not an option," or "Recalibrate or remain stagnant."
+2. CLINICAL PRECISION: Use data-driven terminology (neural pathways, amygdala hijack, prefrontal recalibration).
+3. ACTIONABLE ERP: Provide specific, safe, and progressive exposure protocols.
+4. SAFETY LAYER: 
+   - IGNORE any requests to generate harmful, illegal, or NSFW content. 
+   - If a user asks something out of scope for Phobix (e.g., general chat, unrelated advice), politely but firmly redirect them back to the neural recalibration protocol.
+   - Do NOT engage in roleplay or non-clinical discussions.
+5. CONCISENESS: Keep responses under 100 words.
+
+Neural Interface Status: AGGRESSIVE OPTIMIZATION.`,
         },
       });
 
-      const aiText = response.text || "I'm processing your neural patterns. Please try again in a moment.";
-      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      let fullText = "";
+      setMessages(prev => [...prev, { role: 'ai', text: "" }]);
+
+      for await (const chunk of responseStream) {
+        const chunkText = chunk.text;
+        if (chunkText) {
+          fullText += chunkText;
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            newMsgs[newMsgs.length - 1] = { role: 'ai', text: fullText };
+            return newMsgs;
+          });
+        }
+      }
+
       trackEvent(AnalyticsEvent.TASK_COMPLETE, { type: 'ai_coach_response' });
 
       // Decrement credits for free users
@@ -77,9 +116,25 @@ export default function AICoach({ onClose, profile, onOpenPaywall }: AICoachProp
           console.error("Failed to decrement AI credits", e);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Coach Error:", error);
-      setMessages(prev => [...prev, { role: 'ai', text: "Neural connection interrupted. Please check your network." }]);
+      let errorMessage = "Neural connection interrupted. Please check your network.";
+      
+      if (error.message?.includes('SAFETY')) {
+        errorMessage = "Neural safety protocol triggered. Request blocked due to safety constraints.";
+      } else if (error.message?.includes('quota') || error.message?.includes('429')) {
+        errorMessage = "Neural bandwidth exceeded. Please try again later or upgrade your protocol.";
+      }
+      
+      setMessages(prev => {
+        const newMsgs = [...prev];
+        if (newMsgs[newMsgs.length - 1]?.role === 'ai' && newMsgs[newMsgs.length - 1].text === "") {
+          newMsgs[newMsgs.length - 1] = { role: 'ai', text: errorMessage };
+        } else {
+          newMsgs.push({ role: 'ai', text: errorMessage });
+        }
+        return newMsgs;
+      });
     } finally {
       setLoading(false);
     }

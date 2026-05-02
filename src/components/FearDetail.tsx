@@ -8,6 +8,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, Timestamp, getCountFromServer, limit, onSnapshot } from 'firebase/firestore';
 import { GoogleGenAI } from "@google/genai";
 import confetti from 'canvas-confetti';
+import { getMindsetInfo } from '../lib/utils';
 
 interface FearDetailProps {
   fearType: FearType;
@@ -125,6 +126,11 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
       const gain = Math.max(0, beforeFear - afterFear) * (selectedTask.difficulty === 'hard' ? 2 : selectedTask.difficulty === 'medium' ? 1.5 : 1);
       const newScore = Math.min(100, score + gain);
 
+      // XP Logic
+      const xpGained = selectedTask.points || 0;
+      const newXp = (profile.xp || 0) + xpGained;
+      const { rank: newRank } = getMindsetInfo(newXp);
+
       // 2. Update profile logic
       const updatedFears = profile.fears.map(f => 
         f.type === fearType ? { ...f, score: newScore, lastUpdated: new Date().toISOString() } : f
@@ -160,10 +166,16 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
         }
       }
 
+      // Gold Badge Logic: Award if streak reaches 30
+      const newGoldBadge = profile.goldBadge || newStreak >= 30;
+
       await updateDoc(doc(db, 'users', profile.userId), {
         fears: finalFears,
         streak: newStreak,
-        lastTaskDate: newLastTaskDate
+        lastTaskDate: newLastTaskDate,
+        xp: newXp,
+        rank: newRank,
+        goldBadge: newGoldBadge
       });
 
       // Generate AI Insight in parallel with the success screen
@@ -198,17 +210,17 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: '100%', opacity: 0 }}
       transition={{ type: 'spring', damping: 30, stiffness: 200 }}
-      className="fixed inset-0 bg-white/95 backdrop-blur-3xl z-[60] flex flex-col overflow-hidden"
+      className="fixed inset-0 bg-[var(--bg)] backdrop-blur-3xl z-[60] flex flex-col overflow-hidden"
     >
-      <header className="p-6 flex justify-between items-center border-b border-gray-100 bg-white/50 backdrop-blur-xl safe-top">
+      <header className="p-6 flex justify-between items-center border-b border-[var(--border)] bg-[var(--bg)]/50 backdrop-blur-xl safe-top">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <img src={APP_LOGO} className="w-10 h-10 object-cover rounded-xl shadow-lg" alt="FEAR" referrerPolicy="no-referrer" />
+            <img src={APP_LOGO} className="w-10 h-10 object-cover rounded-xl shadow-lg" alt="Phobix" referrerPolicy="no-referrer" />
             <div className="absolute inset-0 bg-blue-500/10 rounded-xl pointer-events-none" />
           </div>
           <div>
-            <h2 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">Neural Analysis</h2>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight tracking-tighter italic">{fearType}</h1>
+            <h2 className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-[0.2em]">Neural Analysis</h2>
+            <h1 className="text-xl sm:text-2xl font-bold text-current leading-tight tracking-tighter italic capitalize">{fearType}</h1>
           </div>
         </div>
         <motion.button 
@@ -261,33 +273,33 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <h3 className="text-lg font-bold text-gray-900">Exposure Ladder</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">10-Step Protocol</p>
+                  <h3 className="text-lg font-bold text-current">Exposure Ladder</h3>
+                  <p className="text-[10px] text-[var(--text-secondary)] font-bold uppercase tracking-widest">10-Step Protocol</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={handleRefresh}
-                    className="p-2 bg-gray-100 rounded-lg text-gray-400 hover:text-blue-500 transition-colors"
+                    className="p-2 bg-[var(--border)] rounded-lg text-[var(--text-secondary)] hover:text-blue-500 transition-colors"
                     title="Refresh Protocol"
                   >
                     <RefreshCw size={14} className={isRefreshing ? "animate-spin-once" : ""} />
                   </button>
-                  <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
                     {loadingHistory ? "Loading..." : `${completedTaskIds.size} / 10 Mastered`}
                   </span>
                 </div>
               </div>
               
               {loadingHistory ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                <div className="flex flex-col items-center justify-center py-12 text-[var(--text-secondary)]">
                   <Loader2 size={32} className="animate-spin mb-2" />
                   <p className="text-[10px] font-bold uppercase tracking-widest">Syncing History...</p>
                 </div>
               ) : completedTaskIds.size === MOCK_TASKS.filter(t => t.fearType === fearType).length ? (
-                <GlassCard className="bg-green-50 border-green-100 text-center py-8">
-                  <Trophy className="mx-auto text-green-600 mb-3" size={40} />
-                  <h4 className="text-lg font-bold text-gray-900 mb-1">Category Mastered!</h4>
-                  <p className="text-xs text-gray-500 max-w-[200px] mx-auto leading-relaxed">
+                <GlassCard className="bg-green-500/10 border-green-500/20 text-center py-8">
+                  <Trophy className="mx-auto text-green-600 dark:text-green-400 mb-3" size={40} />
+                  <h4 className="text-lg font-bold text-current mb-1">Category Mastered!</h4>
+                  <p className="text-xs text-[var(--text-secondary)] max-w-[200px] mx-auto leading-relaxed">
                     You've completed every unique task in this category. You can still repeat them to maintain your resilience.
                   </p>
                 </GlassCard>
@@ -295,7 +307,7 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
 
               <div key={refreshKey} className="relative pl-8 space-y-6">
                 {/* The Ladder Vertical Line */}
-                <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-gray-100">
+                <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-[var(--border)]">
                   <motion.div 
                     initial={{ height: 0 }}
                     animate={{ height: `${tasks.length > 0 ? (completedTaskIds.size / tasks.length) * 100 : 0}%` }}
@@ -318,7 +330,7 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
                           className={`absolute -left-[29px] top-4 w-4 h-4 rounded-full border-2 z-10 transition-all duration-500 ${
                             isCompleted 
                               ? "bg-blue-500 border-blue-200 shadow-[0_0_8px_rgba(59,130,246,0.4)]" 
-                              : "bg-white border-gray-200"
+                              : "bg-[var(--bg)] border-[var(--border)]"
                           }`}
                         >
                           {isCompleted && <div className="w-full h-full flex items-center justify-center text-[8px] text-white font-bold">✓</div>}
@@ -327,12 +339,12 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
                         <GlassCard
                           onClick={() => setSelectedTask(task)}
                           className={`border-2 transition-all relative overflow-hidden group ${
-                            isSelected ? "border-blue-500 bg-blue-50 shadow-lg shadow-blue-100/50" : "border-gray-100"
-                          } ${isCompleted ? "opacity-80" : ""}`}
+                            isSelected ? "border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20" : "border-[var(--border)] bg-[var(--card-bg)]"
+                          } ${isCompleted ? "opacity-60" : ""}`}
                         >
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Step {index + 1}</span>
+                              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Step {index + 1}</span>
                               <span className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
                                 task.difficulty === 'hard' ? "bg-red-100 text-red-600" :
                                 task.difficulty === 'medium' ? "bg-orange-100 text-orange-600" :
@@ -450,7 +462,7 @@ export default function FearDetail({ fearType, profile, onClose, setIsUpdating, 
             </p>
             <button
               onClick={onClose}
-              className="w-full py-4 bg-black text-white rounded-2xl font-bold active:scale-95 transition-transform"
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold active:scale-95 transition-transform shadow-xl shadow-blue-500/20"
             >
               Return to Network
             </button>

@@ -1,30 +1,93 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+:root {
+  --bg: #f8fafc;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --border: rgba(15, 23, 42, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(59, 130, 246, 0.15);
+  --glass-shadow: rgba(59, 130, 246, 0.08);
+  --card-bg: rgba(255, 255, 255, 0.8);
+}
+
+.dark {
+  --bg: #050505;
+  --text: #ffffff;
+  --text-secondary: #94a3b8;
+  --border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: rgba(0, 0, 0, 0.37);
+  --card-bg: rgba(255, 255, 255, 0.03);
+}
+
 @theme {
   --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-body {
-  @apply font-sans bg-white text-gray-900 antialiased;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    @apply font-sans antialiased transition-colors duration-300;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
 }
 
-/* Safe Area Insets for Mobile */
-.safe-top {
-  padding-top: env(safe-area-inset-top);
-}
+@layer utilities {
+  .glass-morphism {
+    background-color: var(--glass-bg);
+    border-color: var(--glass-border);
+    box-shadow: 0 8px 32px 0 var(--glass-shadow);
+    @apply backdrop-blur-2xl border transition-all duration-300;
+  }
+  
+  .glass-morphism-dark {
+    background-color: rgba(0, 0, 0, 0.4);
+    border-color: var(--glass-border);
+    @apply backdrop-blur-3xl border shadow-2xl transition-all duration-300;
+  }
 
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
+  .dark .glass-morphism-dark {
+    background-color: rgba(0, 0, 0, 0.4);
+  }
 
-.safe-pb-nav {
-  padding-bottom: calc(env(safe-area-inset-bottom) + 5rem);
+  :root:not(.dark) .glass-morphism-dark {
+    background-color: rgba(255, 255, 255, 0.8);
+  }
+
+  .premium-gradient {
+    background: 
+      radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 100%);
+  }
+
+  .text-glow {
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  }
+
+  .dark .text-glow {
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-pb-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 5rem);
+  }
 }
 
 /* Custom Range Input Styling */
@@ -33,7 +96,8 @@ input[type="range"] {
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
-  @apply h-1.5 bg-gray-100 rounded-full border border-gray-200/50;
+  @apply h-1.5 rounded-full border border-[var(--border)];
+  background-color: var(--border);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -41,7 +105,8 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 input[type="range"]::-moz-range-track {
-  @apply h-1.5 bg-gray-100 rounded-full border border-gray-200/50;
+  @apply h-1.5 rounded-full border border-[var(--border)];
+  background-color: var(--border);
 }
 
 input[type="range"]::-moz-range-thumb {
@@ -58,7 +123,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-gray-200 rounded-full hover:bg-gray-300 transition-colors;
+  @apply rounded-full hover:bg-blue-500/40 transition-colors;
+  background-color: var(--border);
 }
 
 @keyframes spin-once {

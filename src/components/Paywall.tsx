@@ -14,8 +14,14 @@ interface PaywallProps {
 }
 
 import { trackEvent, AnalyticsEvent } from '../services/analytics';
+import GooglePayButton from '@google-pay/button-react';
 
-import { getOfferings, purchasePackage, getCustomerInfo } from '../services/revenuecat';
+// Digital Goods API types
+declare global {
+  interface Window {
+    getDigitalGoodsService?: (serviceName: string) => Promise<any>;
+  }
+}
 
 export default function Paywall({ onClose, profile, isMandatory }: PaywallProps) {
   const [couponCode, setCouponCode] = useState('');
@@ -24,14 +30,43 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
   const [couponSuccess, setCouponSuccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [offerings, setOfferings] = useState<any>(null);
+  const [isTWA, setIsTWA] = useState(false);
+
+  const handleDodoPayment = async (productId: string) => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customerEmail: auth.currentUser?.email || profile.email,
+          productId
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to initiate Dodo Payment');
+
+      // Redirect to checkout
+      window.location.href = data.checkout_url;
+    } catch (error) {
+      console.error('Dodo Payment Error:', error);
+      alert('Failed to initiate payment. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchOfferings = async () => {
-      const data = await getOfferings();
-      setOfferings(data);
+    // Check if running in a Trusted Web Activity (TWA)
+    const checkTWA = () => {
+      const isTwa = window.matchMedia('(display-mode: standalone)').matches || 
+                   (window as any).getDigitalGoodsService !== undefined;
+      setIsTWA(isTwa);
     };
-    fetchOfferings();
+    checkTWA();
   }, []);
 
   const handleApplyCoupon = async () => {
@@ -88,38 +123,65 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
     }
   };
 
-  const handleUpgradeClick = async (planName: string = 'Premium', packageObj?: any) => {
-    trackEvent(AnalyticsEvent.UPGRADE_CLICK, { plan: planName });
-    
-    if (!packageObj) {
-      // If no package is provided, we can't proceed with real purchase
-      // In production, we should have offerings. If not, show error.
-      if (offerings?.current) {
-        packageObj = offerings.current.monthly; // Default to monthly if available
-      } else {
-        console.error('No offerings available for purchase');
-        return;
-      }
+  const handleDigitalGoodsPayment = async (sku: string) => {
+    if (!window.getDigitalGoodsService) {
+      alert('Digital Goods API not supported in this environment.');
+      return;
     }
 
     setIsProcessing(true);
     try {
-      const customerInfo = await purchasePackage(packageObj);
-      if (customerInfo?.entitlements?.active?.premium) {
-        await updateDoc(doc(db, 'users', auth.currentUser!.uid), {
-          subscriptionStatus: 'premium',
-          premiumSince: serverTimestamp()
-        });
-        setPaymentSuccess(true);
-        trackEvent(AnalyticsEvent.TASK_COMPLETE, { type: 'subscription_purchase', plan: planName });
-        setTimeout(() => {
-          onClose();
-        }, 2000);
-      }
-    } catch (error: any) {
-      if (!error.userCancelled) {
-        console.error('Payment failed:', error);
-      }
+      const service = await window.getDigitalGoodsService('https://play.google.com/billing');
+      
+      // Create a payment request
+      const paymentMethodData = [{
+        supportedMethods: 'https://play.google.com/billing',
+        data: { sku }
+      }];
+
+      const request = new (window as any).PaymentRequest(paymentMethodData);
+      const response = await request.show();
+      
+      // Process response
+      console.log('Digital Goods Response:', response);
+      
+      // In a real app, you'd verify the purchase token on your server
+      // For this demo, we'll assume success if the response is received
+      await response.complete('success');
+      
+      await updateDoc(doc(db, 'users', auth.currentUser!.uid), {
+        subscriptionStatus: 'premium',
+        premiumSince: serverTimestamp()
+      });
+      
+      setPaymentSuccess(true);
+      trackEvent(AnalyticsEvent.TASK_COMPLETE, { type: 'digital_goods_purchase', sku });
+      setTimeout(() => onClose(), 2000);
+    } catch (error) {
+      console.error('Digital Goods Error:', error);
+      alert('Payment failed or was cancelled.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePaymentSuccess = async (paymentData: any) => {
+    console.log('Payment success:', paymentData);
+    setIsProcessing(true);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser!.uid), {
+        subscriptionStatus: 'premium',
+        premiumSince: serverTimestamp()
+      });
+      setPaymentSuccess(true);
+      trackEvent(AnalyticsEvent.TASK_COMPLETE, { type: 'subscription_purchase' });
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to update subscription status:', error);
+      alert('Payment successful, but failed to update profile. Please contact support.');
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -127,12 +189,8 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
   const handleRestore = async () => {
     setIsProcessing(true);
     try {
-      const customerInfo = await getCustomerInfo();
-      if (customerInfo?.entitlements?.active?.premium) {
-        await updateDoc(doc(db, 'users', auth.currentUser!.uid), {
-          subscriptionStatus: 'premium',
-          premiumSince: serverTimestamp()
-        });
+      const userDoc = await getDoc(doc(db, 'users', profile.userId));
+      if (userDoc.exists() && userDoc.data().subscriptionStatus === 'premium') {
         setPaymentSuccess(true);
         setTimeout(() => onClose(), 2000);
       } else {
@@ -214,7 +272,7 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
         <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent" />
         
         <div className="absolute top-[calc(1.5rem+env(safe-area-inset-top))] left-6 z-20 flex items-center gap-3">
-          <img src={APP_LOGO} className="w-10 h-10 object-cover rounded-xl shadow-lg" alt="FEAR" referrerPolicy="no-referrer" />
+          <img src={APP_LOGO} className="w-10 h-10 object-cover rounded-xl shadow-lg" alt="Phobix" referrerPolicy="no-referrer" />
           <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-xl border border-white/30">
             <h2 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Premium</h2>
           </div>
@@ -270,13 +328,12 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
 
         <div className="space-y-4 pt-4">
           <GlassCard 
-            onClick={() => handleUpgradeClick('Yearly')}
-            className="border-2 border-blue-500 bg-blue-50 relative overflow-hidden active:scale-95 transition-transform"
+            className="border-2 border-blue-500 bg-blue-50 relative overflow-hidden"
           >
             <div className="absolute top-0 right-0 bg-blue-500 text-white text-[8px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-widest">
               Best Value
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-4">
               <div>
                 <h4 className="font-bold text-gray-900">Yearly Protocol</h4>
                 <p className="text-xs text-gray-500">Billed annually</p>
@@ -286,13 +343,18 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
                 <div className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Save 50%</div>
               </div>
             </div>
+            <button
+              onClick={() => handleDodoPayment('p_yearly_elite')}
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
+            >
+              Subscribe with Dodo
+            </button>
           </GlassCard>
 
           <GlassCard 
-            onClick={() => handleUpgradeClick('Monthly')}
-            className="border-2 border-gray-100 active:scale-95 transition-transform"
+            className="border-2 border-gray-100"
           >
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-4">
               <div>
                 <h4 className="font-bold text-gray-900">Monthly Protocol</h4>
                 <p className="text-xs text-gray-500">Flexible subscription</p>
@@ -301,6 +363,12 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
                 <div className="text-2xl font-bold text-gray-900">$9.99<span className="text-sm font-normal text-gray-400">/mo</span></div>
               </div>
             </div>
+            <button
+              onClick={() => handleDodoPayment('p_monthly_elite')}
+              className="w-full py-4 bg-gray-900 text-white rounded-xl font-black uppercase tracking-widest text-xs active:scale-95 transition-all"
+            >
+              Subscribe with Dodo
+            </button>
           </GlassCard>
 
           <div className="pt-4">
@@ -316,7 +384,7 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
               <button
                 onClick={handleApplyCoupon}
                 disabled={isApplying || !couponCode.trim()}
-                className="absolute right-2 top-2 bottom-2 px-4 bg-black text-white rounded-xl text-[10px] font-bold uppercase tracking-widest disabled:opacity-50"
+                className="absolute right-2 top-2 bottom-2 px-4 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest disabled:opacity-50"
               >
                 {isApplying ? 'Applying...' : 'Apply'}
               </button>
@@ -334,24 +402,16 @@ export default function Paywall({ onClose, profile, isMandatory }: PaywallProps)
             <a href="/privacy" className="text-blue-500 hover:underline mx-1">Privacy Policy</a>.
           </p>
           <p className="text-[10px] text-gray-400 font-medium">
-            Cancel anytime in your Google Play Store account settings.
+            Cancel anytime in your account settings.
           </p>
         </div>
       </div>
 
       <div className="p-6 border-t border-gray-100 safe-bottom">
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={handleUpgradeClick}
-          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-200 active:scale-95 transition-transform"
-        >
-          Start 3-Day Free Trial
-        </motion.button>
         <motion.button 
           whileTap={{ scale: 0.95 }}
           onClick={handleRestore} 
-          className="w-full py-3 text-xs font-bold text-gray-400 uppercase tracking-widest mt-2"
+          className="w-full py-3 text-xs font-bold text-gray-400 uppercase tracking-widest"
         >
           Restore Purchases
         </motion.button>

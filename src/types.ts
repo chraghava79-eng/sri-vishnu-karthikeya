@@ -17,19 +17,23 @@ export interface PrivacyPreferences {
 export interface UserProfile {
   userId: string;
   displayName: string;
+  photoURL?: string;
   email: string;
   fears: FearProgress[];
   fearProfile?: FearProfile;
   privacyPreferences?: PrivacyPreferences;
   streak: number;
+  xp: number;
   lastTaskDate?: string;
+  lastLoginDate?: string;
   subscriptionStatus: 'free' | 'premium';
-  rank: 'Beginner' | 'Novice' | 'Intermediate' | 'Advanced' | 'Fearless';
+  rank: 'Beginner' | 'Intermediate' | 'Pro' | 'Experienced' | 'Elite' | 'God';
   role?: 'user' | 'admin';
   isBanned?: boolean;
   createdAt: any;
   aiCredits?: number;
   lastCreditReset?: string;
+  goldBadge?: boolean;
 }
 
 export interface Coupon {

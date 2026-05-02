@@ -4,10 +4,11 @@ import { UserProfile, AlternativeActivity, AlternativeModeType } from '../types'
 import { ALTERNATIVE_ACTIVITIES, MICRO_CHALLENGES, APP_LOGO } from '../constants';
 import GlassCard from './GlassCard';
 import { Brain, Zap, MessageSquare, ArrowLeft, Send, Loader2, CheckCircle2, Sparkles, X } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import confetti from 'canvas-confetti';
+import { getMindsetInfo } from '../lib/utils';
 
 interface AlternativeModeProps {
   profile: UserProfile;
@@ -26,6 +27,7 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
   const [currentChallenge, setCurrentChallenge] = useState('');
   const [timer, setTimer] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -64,27 +66,48 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `User Fear Thought: "${input}"
-        
-        As a clinical neural resilience coach, provide a 2-sentence cognitive reframe. 
-        1. Acknowledge the feeling without judgment.
-        2. Provide a logical, action-oriented shift in perspective.
-        Tone: Clinical, precise, empowering.`,
+        model: "gemini-3.1-pro-preview",
+        contents: `User Fear Thought: "${input}"`,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          systemInstruction: `You are a world-class Neural Resilience Architect. Your task is to perform a high-impact Cognitive Shift for a user experiencing a fear-based thought.
+
+USER CONTEXT:
+- Rank: ${profile.rank}
+- Neural XP: ${profile.xp || 0}
+
+PROTOCOL:
+1. BIOLOGICAL VALIDATION: Briefly explain the evolutionary or biological origin of this fear (e.g., 'Your amygdala is incorrectly flagging this as a survival threat'). 1 sentence.
+2. NEURAL REFRAME: Provide a powerful, logical, and action-oriented shift in perspective. Turn the 'threat' into a 'calibration opportunity'. 1-2 sentences.
+3. TONE: Clinical, precise, empowering, and high-agency. Use neuro-scientific terminology.
+
+Neural Recalibration: ACTIVE.`,
+        },
       });
       
       const result = response.text || "Neural patterns analyzed. Shift focus to immediate action.";
       setReframe(result);
       
-      // Save log
-      await addDoc(collection(db, 'users', profile.userId, 'alternative_logs'), {
-        userId: profile.userId,
-        activityId: selectedActivity?.id,
-        type: 'Mind Reframe',
-        input,
-        reframe: result,
-        timestamp: serverTimestamp()
-      });
+      // XP Logic
+      const xpGained = 25;
+      const newXp = (profile.xp || 0) + xpGained;
+      const { rank: newRank } = getMindsetInfo(newXp);
+
+      // Save log and update profile
+      await Promise.all([
+        addDoc(collection(db, 'users', profile.userId, 'alternative_logs'), {
+          userId: profile.userId,
+          activityId: selectedActivity?.id,
+          type: 'Mind Reframe',
+          input,
+          reframe: result,
+          timestamp: serverTimestamp()
+        }),
+        updateDoc(doc(db, 'users', profile.userId), {
+          xp: newXp,
+          rank: newRank
+        })
+      ]);
       
       setStep('result');
       confetti({
@@ -103,13 +126,24 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
   const handleChallengeComplete = async () => {
     setIsLoading(true);
     try {
-      await addDoc(collection(db, 'users', profile.userId, 'alternative_logs'), {
-        userId: profile.userId,
-        activityId: selectedActivity?.id,
-        type: 'Micro-Challenges',
-        challenge: currentChallenge,
-        timestamp: serverTimestamp()
-      });
+      // XP Logic
+      const xpGained = 15;
+      const newXp = (profile.xp || 0) + xpGained;
+      const { rank: newRank } = getMindsetInfo(newXp);
+
+      await Promise.all([
+        addDoc(collection(db, 'users', profile.userId, 'alternative_logs'), {
+          userId: profile.userId,
+          activityId: selectedActivity?.id,
+          type: 'Micro-Challenges',
+          challenge: currentChallenge,
+          timestamp: serverTimestamp()
+        }),
+        updateDoc(doc(db, 'users', profile.userId), {
+          xp: newXp,
+          rank: newRank
+        })
+      ]);
       setStep('result');
       confetti({
         particleCount: 150,
@@ -128,13 +162,24 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
     if (!input.trim()) return;
     setIsLoading(true);
     try {
-      await addDoc(collection(db, 'users', profile.userId, 'alternative_logs'), {
-        userId: profile.userId,
-        activityId: selectedActivity?.id,
-        type: 'Reflection',
-        input,
-        timestamp: serverTimestamp()
-      });
+      // XP Logic
+      const xpGained = 20;
+      const newXp = (profile.xp || 0) + xpGained;
+      const { rank: newRank } = getMindsetInfo(newXp);
+
+      await Promise.all([
+        addDoc(collection(db, 'users', profile.userId, 'alternative_logs'), {
+          userId: profile.userId,
+          activityId: selectedActivity?.id,
+          type: 'Reflection',
+          input,
+          timestamp: serverTimestamp()
+        }),
+        updateDoc(doc(db, 'users', profile.userId), {
+          xp: newXp,
+          rank: newRank
+        })
+      ]);
       setStep('result');
       confetti({
         particleCount: 100,
@@ -147,6 +192,13 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleNewChallenge = () => {
+    const random = MICRO_CHALLENGES[Math.floor(Math.random() * MICRO_CHALLENGES.length)];
+    setCurrentChallenge(random);
+    setTimer(0);
+    setIsTimerActive(false);
   };
 
   const reset = () => {
@@ -277,35 +329,69 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
 
               {selectedActivity.type === 'Micro-Challenges' && (
                 <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8">
-                  <div className="relative">
-                    <div className="w-24 h-24 bg-orange-50 rounded-full flex items-center justify-center text-orange-500 mb-4 animate-pulse">
-                      <Zap size={48} />
+                  <div className="relative w-32 h-32">
+                    <svg className="w-full h-full -rotate-90">
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="60"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        className="text-orange-50"
+                      />
+                      <motion.circle
+                        cx="64"
+                        cy="64"
+                        r="60"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        strokeDasharray="377"
+                        animate={{ strokeDashoffset: isTimerActive ? 377 * (1 - timer / 60) : 377 }}
+                        className="text-orange-500"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      {isTimerActive ? (
+                        <span className="text-3xl font-black text-orange-600">{timer}s</span>
+                      ) : (
+                        <Zap size={40} className="text-orange-500 animate-pulse" />
+                      )}
                     </div>
-                    {isTimerActive && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-2xl font-black text-orange-600">{timer}s</span>
-                      </div>
-                    )}
                   </div>
                   <div className="space-y-4 max-w-xs">
                     <h3 className="text-xl font-bold text-gray-900 leading-tight">{currentChallenge}</h3>
                     <p className="text-sm text-gray-500 italic">"Courage is not the absence of fear, but the triumph over it."</p>
                   </div>
                   <div className="w-full space-y-3">
-                    {!isTimerActive && timer === 0 && (
+                    {!isTimerActive && timer === 0 ? (
                       <button
                         onClick={startTimer}
                         className="w-full py-4 border-2 border-orange-100 text-orange-600 rounded-2xl font-bold active:scale-95 transition-transform"
                       >
                         Start 60s Protocol
                       </button>
-                    )}
-                    <button
-                      onClick={handleChallengeComplete}
-                      className="w-full py-5 bg-orange-500 text-white rounded-[2rem] font-bold flex items-center justify-center gap-3 shadow-xl shadow-orange-200 active:scale-95 transition-all"
-                    >
-                      <CheckCircle2 size={20} /> I Completed This
-                    </button>
+                    ) : isTimerActive ? (
+                      <div className="py-4 text-orange-400 text-xs font-bold uppercase tracking-widest">Protocol in Progress...</div>
+                    ) : null}
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={handleNewChallenge}
+                        disabled={isTimerActive}
+                        className="py-4 bg-gray-50 text-gray-500 rounded-2xl font-bold active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        New Challenge
+                      </button>
+                      <button
+                        onClick={handleChallengeComplete}
+                        disabled={isTimerActive && timer > 0}
+                        className="py-4 bg-orange-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        Complete
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -344,12 +430,30 @@ export default function AlternativeMode({ profile, onClose, onOpenPaywall }: Alt
                 <CheckCircle2 size={48} />
               </div>
               
-              <div className="space-y-4 max-w-sm">
+              <div className="space-y-4 max-w-sm w-full">
                 <h2 className="text-3xl font-black text-gray-900 tracking-tighter italic">Protocol Success</h2>
                 {reframe ? (
-                  <div className="p-6 bg-blue-50 rounded-[2rem] border border-blue-100 relative">
-                    <Sparkles className="absolute -top-2 -right-2 text-blue-400" size={24} />
-                    <p className="text-sm text-blue-900 leading-relaxed italic">"{reframe}"</p>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-left">
+                      <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-1">Original Thought</span>
+                      <p className="text-xs text-gray-600 italic">"{input}"</p>
+                    </div>
+                    <div className="p-6 bg-blue-50 rounded-[2rem] border border-blue-100 relative text-left">
+                      <Sparkles className="absolute -top-2 -right-2 text-blue-400" size={24} />
+                      <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest block mb-2">Neural Reframe</span>
+                      <p className="text-sm text-blue-900 leading-relaxed font-medium">"{reframe}"</p>
+                      
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(reframe);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className="mt-4 text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1 hover:underline"
+                      >
+                        {copied ? 'Copied!' : 'Copy to Clipboard'}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-gray-500 leading-relaxed">
